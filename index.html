@@ -313,7 +313,7 @@
       <li>鼠标移动，或 WASD / 方向键走位</li>
       <li>空格、双击或右下角按钮冲刺</li>
       <li>冲刺期间短暂无敌，擦边可以连击</li>
-      <li>每关 40 秒，撑过最终波才能过关</li>
+      <li>每关 35 秒，最后 5 秒是高难度波，时间到进入下一关</li>
       <li>路障挡路，黑洞踩进去会直接出局</li>
       <li>P 暂停，M 开关音效，R 重开</li>
     </ul>
@@ -447,12 +447,8 @@
   function threat() {
     return Math.min(1.55, currentScore() / 780) + (level - 1) * 0.14;
   }
-  const LEVEL_SECONDS = 40;
-  function finaleStart() {
-    const n = diff().wave + Math.min(level - 1, 3);
-    const warn = (difficulty === "easy" ? 0.86 : difficulty === "hard" ? 0.45 : 0.66);
-    return Math.max(28, LEVEL_SECONDS - (warn + (n - 1) * 0.13 + 6));
-  }
+  const LEVEL_SECONDS = 35;
+  const FINALE_SECONDS = 5;
   function selectDiff(id) {
     if (!DIFFS[id]) return;
     difficulty = id;
@@ -1053,13 +1049,14 @@
   function startFinale() {
     phase = "finale";
     finaleArmed = true;
-    const n = diff().wave + Math.min(level - 1, 3);
+    const n = (difficulty === "easy" ? 3 : difficulty === "hard" ? 5 : 4) + Math.min(level - 1, 2);
     popup(w / 2, h * 0.3, "第" + level + "关 最终波", 1.2);
     tone(160, 0.12, "square", 0.04);
     tone(230, 0.16, "square", 0.03);
+    spawnIn = 0.4;
     for (let i = 0; i < n; i++) {
       spawnWarning(true, true);
-      warnings[warnings.length - 1].t = -i * 0.13;
+      warnings[warnings.length - 1].t = -i * 0.1;
     }
   }
 
@@ -1069,6 +1066,8 @@
     clearT = 1.45;
     finaleArmed = false;
     levelTime = 0;
+    balls = [];
+    warnings = [];
     hazards = [];
     hazardIn = 2.2;
     bonus += 50 + cleared * 25;
@@ -1082,10 +1081,8 @@
 
   function maybeLevelFlow() {
     if (phase === "clear") return;
-    if (phase === "run" && !finaleArmed && levelTime >= finaleStart()) startFinale();
-    const waveClear = warnings.length === 0 && balls.length === 0;
-    if (phase === "finale" && waveClear && levelTime < LEVEL_SECONDS) phase = "run";
-    if (levelTime >= LEVEL_SECONDS && finaleArmed && waveClear) beginClear();
+    if (phase === "run" && !finaleArmed && levelTime >= LEVEL_SECONDS - FINALE_SECONDS) startFinale();
+    if (levelTime >= LEVEL_SECONDS) beginClear();
   }
 
   function updateBalls(dt, harm) {
@@ -1093,17 +1090,24 @@
       clearT -= dt;
       if (clearT <= 0) phase = "run";
     }
-    const spawning = !harm || phase === "run";
+    const spawning = !harm || phase === "run" || phase === "finale";
     if (spawning) {
       spawnIn -= dt;
       if (spawnIn <= 0) {
-        const heat = harm ? threat() : 0;
-        let count = 1;
-        if (harm && heat > 0.45 && Math.random() < 0.38) count = 2;
-        if (harm && heat > 0.95 && Math.random() < 0.24) count = 3;
-        for (let i = 0; i < count; i++) spawnWarning(harm);
-        const base = harm ? Math.max(0.3, (1.18 - heat * 0.32) * diff().gap) : 0.95;
-        spawnIn = base * (count > 1 ? 1.25 : 1) * rand(0.85, 1.1);
+        if (harm && phase === "finale") {
+          const count = difficulty === "hard" ? 3 : 2;
+          for (let i = 0; i < count; i++) spawnWarning(true, true);
+          const gap = difficulty === "easy" ? 0.58 : difficulty === "hard" ? 0.34 : 0.45;
+          spawnIn = gap * rand(0.9, 1.1);
+        } else {
+          const heat = harm ? threat() : 0;
+          let count = 1;
+          if (harm && heat > 0.45 && Math.random() < 0.38) count = 2;
+          if (harm && heat > 0.95 && Math.random() < 0.24) count = 3;
+          for (let i = 0; i < count; i++) spawnWarning(harm);
+          const base = harm ? Math.max(0.3, (1.18 - heat * 0.32) * diff().gap) : 0.95;
+          spawnIn = base * (count > 1 ? 1.25 : 1) * rand(0.85, 1.1);
+        }
       }
     }
 
