@@ -99,7 +99,7 @@
     gap: 8px;
     pointer-events: auto;
   }
-  #topbtns button, #dashBtn, .ghost {
+  #topbtns button, .ghost {
     background: rgba(43, 33, 24, 0.72);
     color: #fffaf3;
     border-radius: 999px;
@@ -107,7 +107,7 @@
     font-size: 14px;
     backdrop-filter: blur(6px);
   }
-  #topbtns button:hover, #dashBtn:hover, .ghost:hover { background: rgba(43, 33, 24, 0.88); }
+  #topbtns button:hover, .ghost:hover { background: rgba(43, 33, 24, 0.88); }
   #hint {
     position: absolute;
     left: 50%;
@@ -122,25 +122,6 @@
     white-space: nowrap;
   }
   #hint.hide { opacity: 0; }
-  #dashBtn {
-    position: absolute;
-    right: 18px;
-    bottom: 18px;
-    width: 84px;
-    height: 84px;
-    border-radius: 50%;
-    font-size: 18px;
-    font-weight: 700;
-    pointer-events: auto;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-  }
-  #dashBtn:disabled {
-    background: rgba(43, 33, 24, 0.4);
-    color: rgba(255, 250, 243, 0.7);
-  }
-  #dashBtn.ready {
-    background: var(--cinnabar);
-  }
 
   .overlay {
     position: fixed;
@@ -279,9 +260,6 @@
     #hint { font-size: 12px; max-width: 90vw; white-space: normal; text-align: center; }
     #score { font-size: 34px; }
   }
-  @media (pointer: fine) {
-    #dashBtn { display: none; }
-  }
 </style>
 </head>
 <body>
@@ -301,8 +279,7 @@
     <button id="muteBtn" type="button">音效开</button>
     <button id="pauseBtn" type="button">暂停</button>
   </div>
-  <div id="hint">鼠标或 WASD 移动 · 空格冲刺 · 捡道具，躲开路障和黑洞</div>
-  <button id="dashBtn" type="button">冲刺</button>
+  <div id="hint">鼠标或 WASD 移动 · 捡道具，躲开路障和黑洞</div>
 </div>
 
 <div id="menu" class="overlay">
@@ -319,8 +296,7 @@
     <p class="best">最高分 <strong id="menuBest">0</strong></p>
     <ul class="help">
       <li>鼠标移动，或 WASD / 方向键走位</li>
-      <li>空格、双击或右下角按钮冲刺</li>
-      <li>冲刺期间短暂无敌，擦边可以连击</li>
+      <li>靠近球擦边可以连击</li>
       <li>每关 35 秒，最后 5 秒是高难度波，时间到进入下一关</li>
       <li>路障挡路，黑洞踩进去会直接出局</li>
       <li>捡道具：变大、变小、加速、减速，或隐身 5 秒</li>
@@ -367,7 +343,6 @@
   const comboEl = document.getElementById("combo");
   const buffsEl = document.getElementById("buffs");
   const hintEl = document.getElementById("hint");
-  const dashBtn = document.getElementById("dashBtn");
   const muteBtn = document.getElementById("muteBtn");
   const menuEl = document.getElementById("menu");
   const pauseEl = document.getElementById("pause");
@@ -388,10 +363,10 @@
 
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const keys = new Set();
-  const pointer = { x: 0, y: 0, inside: false, intent: false, holding: false, lastTap: 0 };
+  const pointer = { x: 0, y: 0, inside: false, intent: false, holding: false };
   const player = {
     x: 0, y: 0, vx: 0, vy: 0, r: 14,
-    lives: 3, inv: 0, dashing: 0, dashCd: 0,
+    lives: 3, inv: 0,
     walk: 0, moving: false, faceX: 1, faceY: 0
   };
 
@@ -413,7 +388,6 @@
   };
   let particles = [];
   let popups = [];
-  let ghosts = [];
   let elapsed = 0;
   let bonus = 0;
   let combo = 0;
@@ -712,7 +686,6 @@
     if (player.inv > 0 || state !== "play") return;
     player.lives -= 1;
     player.inv = 1.2;
-    player.dashing = 0;
     flash = 0.4;
     shake = reduceMotion ? 0 : 16;
     combo = 0;
@@ -748,7 +721,6 @@
     pickups = [];
     particles = [];
     popups = [];
-    ghosts = [];
     elapsed = 0;
     bonus = 0;
     combo = 0;
@@ -776,8 +748,6 @@
     player.vy = 0;
     player.lives = 3;
     player.inv = 0.6;
-    player.dashing = 0;
-    player.dashCd = 0.2;
     player.walk = 0;
     hintEl.classList.remove("hide");
     renderHearts();
@@ -798,7 +768,6 @@
     pickups = [];
     particles = [];
     popups = [];
-    ghosts = [];
     effects.grow = effects.shrink = effects.fast = effects.slow = effects.cloak = 0;
     refreshBest();
     setState("menu");
@@ -819,74 +788,42 @@
     }
   }
 
-  function tryDash() {
-    if (state !== "play" || player.dashCd > 0) return;
-    let fx = player.vx;
-    let fy = player.vy;
-    if (Math.hypot(fx, fy) < 20) {
-      fx = pointer.x - player.x;
-      fy = pointer.y - player.y;
-    }
-    if (Math.hypot(fx, fy) < 8) {
-      fx = player.faceX;
-      fy = player.faceY;
-    }
-    const len = Math.hypot(fx, fy) || 1;
-    const k = scale();
-    player.vx = fx / len * 920 * k * speedMul();
-    player.vy = fy / len * 920 * k * speedMul();
-    player.faceX = fx / len;
-    player.faceY = fy / len;
-    player.dashing = 0.16;
-    player.dashCd = 1.05;
-    player.inv = Math.max(player.inv, 0.16);
-    burst(player.x, player.y, "#cfe0ff", 7, 80);
-    tone(240, 0.09, "sawtooth", 0.03);
-  }
-
   function updatePlayer(dt) {
     player.px = player.x;
     player.py = player.y;
     const k = scale();
     const maxSpeed = 390 * k * diff().player * speedMul();
     player.r = 13 * k * sizeMul();
-    if (player.dashing > 0) {
-      player.dashing -= dt;
-      player.x += player.vx * dt;
-      player.y += player.vy * dt;
-      ghosts.push({ x: player.x, y: player.y, a: 0.35, r: player.r + 4 });
-    } else {
-      let mx = 0;
-      let my = 0;
-      if (keys.has("KeyA") || keys.has("ArrowLeft")) mx -= 1;
-      if (keys.has("KeyD") || keys.has("ArrowRight")) mx += 1;
-      if (keys.has("KeyW") || keys.has("ArrowUp")) my -= 1;
-      if (keys.has("KeyS") || keys.has("ArrowDown")) my += 1;
-      if (mx || my) {
-        pointer.intent = false;
-        const len = Math.hypot(mx, my);
-        player.vx = mx / len * maxSpeed;
-        player.vy = my / len * maxSpeed;
-      } else if ((pointer.intent || pointer.holding) && pointer.inside) {
-        const dx = pointer.x - player.x;
-        const dy = pointer.y - player.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 7) {
-          const s = Math.min(maxSpeed, dist * 7);
-          player.vx = dx / dist * s;
-          player.vy = dy / dist * s;
-        } else {
-          player.vx = 0;
-          player.vy = 0;
-        }
+    let mx = 0;
+    let my = 0;
+    if (keys.has("KeyA") || keys.has("ArrowLeft")) mx -= 1;
+    if (keys.has("KeyD") || keys.has("ArrowRight")) mx += 1;
+    if (keys.has("KeyW") || keys.has("ArrowUp")) my -= 1;
+    if (keys.has("KeyS") || keys.has("ArrowDown")) my += 1;
+    if (mx || my) {
+      pointer.intent = false;
+      const len = Math.hypot(mx, my);
+      player.vx = mx / len * maxSpeed;
+      player.vy = my / len * maxSpeed;
+    } else if ((pointer.intent || pointer.holding) && pointer.inside) {
+      const dx = pointer.x - player.x;
+      const dy = pointer.y - player.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 7) {
+        const s = Math.min(maxSpeed, dist * 7);
+        player.vx = dx / dist * s;
+        player.vy = dy / dist * s;
       } else {
-        const drag = Math.exp(-12 * dt);
-        player.vx *= drag;
-        player.vy *= drag;
+        player.vx = 0;
+        player.vy = 0;
       }
-      player.x += player.vx * dt;
-      player.y += player.vy * dt;
+    } else {
+      const drag = Math.exp(-12 * dt);
+      player.vx *= drag;
+      player.vy *= drag;
     }
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
 
     const inset = 36;
     player.x = clamp(player.x, inset + player.r, w - inset - player.r);
@@ -898,7 +835,6 @@
       player.faceY = player.vy / sp;
     }
     player.walk += dt * (player.moving ? 10 + sp * 0.02 : 2);
-    if (player.dashCd > 0) player.dashCd = Math.max(0, player.dashCd - dt);
     if (player.inv > 0) player.inv = Math.max(0, player.inv - dt);
   }
 
@@ -1174,7 +1110,6 @@
     endGame.reason = "掉进黑洞了";
     player.lives = 0;
     player.inv = 99;
-    player.dashing = 0;
     flash = 0.55;
     shake = reduceMotion ? 0 : 18;
     burst(player.x, player.y, "#120818", 14, 150);
@@ -1318,10 +1253,6 @@
       p.y -= 28 * dt;
       if (p.age >= p.life) popups.splice(i, 1);
     }
-    for (let i = ghosts.length - 1; i >= 0; i--) {
-      ghosts[i].a -= dt * 1.8;
-      if (ghosts[i].a <= 0) ghosts.splice(i, 1);
-    }
   }
 
   function updateHud() {
@@ -1342,10 +1273,6 @@
     const pct = Math.round(clamp(levelTime / LEVEL_SECONDS, 0, 1) * 100);
     progressFillEl.style.width = pct + "%";
     progressEl.classList.toggle("finale", phase === "finale");
-    const dashLabel = player.dashCd > 0 ? player.dashCd.toFixed(1) : "冲刺";
-    if (dashBtn.textContent !== dashLabel) dashBtn.textContent = dashLabel;
-    dashBtn.disabled = player.dashCd > 0;
-    dashBtn.classList.toggle("ready", player.dashCd <= 0);
     hintEl.classList.toggle("hide", elapsed > 5);
   }
 
@@ -1485,7 +1412,6 @@
     ctx.globalAlpha = alpha;
     ctx.translate(player.x, player.y + bob);
     ctx.scale(sizeMul(), sizeMul());
-    if (player.dashing > 0) ctx.rotate(Math.atan2(player.vy, player.vx) * 0.4);
 
     ctx.fillStyle = "rgba(70, 36, 12, 0.22)";
     ctx.beginPath();
@@ -1689,13 +1615,6 @@
 
     for (const p of pickups) drawPickup(p);
 
-    for (const ghost of ghosts) {
-      ctx.globalAlpha = Math.max(0, ghost.a) * (effects.cloak > 0 ? 0.22 : 1);
-      ctx.fillStyle = "#8eb6ff";
-      ctx.beginPath();
-      ctx.arc(ghost.x, ghost.y, ghost.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
     ctx.globalAlpha = 1;
 
     for (const wn of warnings) drawThrower(wn);
@@ -1774,9 +1693,6 @@
     pointer.y = t.clientY;
     pointer.inside = true;
     pointer.holding = true;
-    const now = performance.now();
-    if (now - pointer.lastTap < 280) tryDash();
-    pointer.lastTap = now;
   }, { passive: false });
   canvas.addEventListener("touchmove", (e) => {
     e.preventDefault();
@@ -1792,7 +1708,6 @@
     if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
     if (e.repeat) return;
     keys.add(e.code);
-    if (e.code === "Space") tryDash();
     if (e.code === "KeyP" || e.code === "Escape") togglePause();
     if (e.code === "KeyM") toggleMute();
     if (e.code === "Enter" && state === "menu") startGame();
@@ -1816,10 +1731,6 @@
   document.getElementById("retryBtn").addEventListener("click", startGame);
   document.getElementById("overMenuBtn").addEventListener("click", backToMenu);
   document.getElementById("muteBtn").addEventListener("click", toggleMute);
-  dashBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    tryDash();
-  });
 
   refreshMute();
   selectDiff(difficulty);
