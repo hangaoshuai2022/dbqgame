@@ -313,7 +313,7 @@
       <li>鼠标移动，或 WASD / 方向键走位</li>
       <li>空格、双击或右下角按钮冲刺</li>
       <li>冲刺期间短暂无敌，擦边可以连击</li>
-      <li>撑过每关的最终波才能进入下一关</li>
+      <li>每关 40 秒，撑过最终波才能过关</li>
       <li>路障挡路，黑洞踩进去会直接出局</li>
       <li>P 暂停，M 开关音效，R 重开</li>
     </ul>
@@ -371,9 +371,9 @@
   const finalLevelEl = document.getElementById("finalLevel");
 
   const DIFFS = {
-    easy: { label: "简单", speed: 0.8, gap: 1.34, chase: 0.6, spread: 1.3, warn: 1.22, player: 1.08, goal: 0.82, wave: 4 },
-    normal: { label: "普通", speed: 1, gap: 1, chase: 1, spread: 1, warn: 1, player: 1, goal: 1, wave: 6 },
-    hard: { label: "困难", speed: 1.24, gap: 0.76, chase: 1.3, spread: 0.68, warn: 0.76, player: 0.94, goal: 1.18, wave: 8 }
+    easy: { label: "简单", speed: 0.8, gap: 1.34, chase: 0.6, spread: 1.3, warn: 1.22, player: 1.08, wave: 4 },
+    normal: { label: "普通", speed: 1, gap: 1, chase: 1, spread: 1, warn: 1, player: 1, wave: 6 },
+    hard: { label: "困难", speed: 1.24, gap: 0.76, chase: 1.3, spread: 0.68, warn: 0.76, player: 0.94, wave: 8 }
   };
 
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -401,6 +401,7 @@
   let spawnIn = 1;
   let difficulty = "normal";
   let level = 1;
+  let levelTime = 0;
   let phase = "run";
   let clearT = 0;
   let finaleArmed = false;
@@ -446,17 +447,11 @@
   function threat() {
     return Math.min(1.55, currentScore() / 780) + (level - 1) * 0.14;
   }
-  function levelSpan(lv) {
-    return Math.round((210 + (lv - 1) * 100) * diff().goal);
-  }
-  function goalFor(lv) {
-    let total = 0;
-    for (let i = 1; i <= lv; i++) total += levelSpan(i);
-    return total;
-  }
-  function finaleAt(lv) {
-    const prev = lv <= 1 ? 0 : goalFor(lv - 1);
-    return prev + Math.round((goalFor(lv) - prev) * 0.7);
+  const LEVEL_SECONDS = 40;
+  function finaleStart() {
+    const n = diff().wave + Math.min(level - 1, 3);
+    const warn = (difficulty === "easy" ? 0.86 : difficulty === "hard" ? 0.45 : 0.66);
+    return Math.max(28, LEVEL_SECONDS - (warn + (n - 1) * 0.13 + 6));
   }
   function selectDiff(id) {
     if (!DIFFS[id]) return;
@@ -740,6 +735,7 @@
     comboT = 0;
     spawnIn = 0.45;
     level = 1;
+    levelTime = 0;
     phase = "run";
     clearT = 0;
     finaleArmed = false;
@@ -1072,6 +1068,7 @@
     phase = "clear";
     clearT = 1.45;
     finaleArmed = false;
+    levelTime = 0;
     hazards = [];
     hazardIn = 2.2;
     bonus += 50 + cleared * 25;
@@ -1085,15 +1082,10 @@
 
   function maybeLevelFlow() {
     if (phase === "clear") return;
-    const score = currentScore();
-    const goal = goalFor(level);
-    if (phase === "run" && !finaleArmed && score >= finaleAt(level)) startFinale();
-    if (phase === "finale" && warnings.length === 0 && balls.length === 0) {
-      if (score >= goal) beginClear();
-      else phase = "run";
-    } else if (phase === "run" && finaleArmed && score >= goal) {
-      beginClear();
-    }
+    if (phase === "run" && !finaleArmed && levelTime >= finaleStart()) startFinale();
+    const waveClear = warnings.length === 0 && balls.length === 0;
+    if (phase === "finale" && waveClear && levelTime < LEVEL_SECONDS) phase = "run";
+    if (levelTime >= LEVEL_SECONDS && finaleArmed && waveClear) beginClear();
   }
 
   function updateBalls(dt, harm) {
@@ -1197,9 +1189,7 @@
       ? "第 " + level + " 关 · 最终波"
       : "第 " + level + " 关 · " + diff().label;
     if (levelLabelEl.textContent !== levelText) levelLabelEl.textContent = levelText;
-    const prev = level <= 1 ? 0 : goalFor(level - 1);
-    const goal = goalFor(level);
-    const pct = Math.round(clamp((currentScore() - prev) / Math.max(1, goal - prev), 0, 1) * 100);
+    const pct = Math.round(clamp(levelTime / LEVEL_SECONDS, 0, 1) * 100);
     progressFillEl.style.width = pct + "%";
     progressEl.classList.toggle("finale", phase === "finale");
     const dashLabel = player.dashCd > 0 ? player.dashCd.toFixed(1) : "冲刺";
@@ -1222,6 +1212,7 @@
     }
     if (state === "play") {
       elapsed += dt;
+      if (phase !== "clear") levelTime += dt;
       updateHazards(dt);
       updatePlayer(dt);
       resolvePlayerHazards();
