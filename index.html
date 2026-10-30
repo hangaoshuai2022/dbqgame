@@ -323,7 +323,7 @@
       <li>冲刺期间短暂无敌，擦边可以连击</li>
       <li>每关 35 秒，最后 5 秒是高难度波，时间到进入下一关</li>
       <li>路障挡路，黑洞踩进去会直接出局</li>
-      <li>捡道具：变大、变小、加速、减速，或隐身 3 秒</li>
+      <li>捡道具：变大、变小、加速、减速，或隐身 5 秒</li>
       <li>P 暂停，M 开关音效，R 重开</li>
     </ul>
   </div>
@@ -409,7 +409,7 @@
     shrink: { name: "变小", mark: "小", good: true, dur: 7, color: "#3dce7a", ink: "#f4fff8" },
     fast: { name: "加速", mark: "快", good: true, dur: 7, color: "#3aa0ff", ink: "#f5faff" },
     slow: { name: "减速", mark: "慢", good: false, dur: 6, color: "#b07cff", ink: "#faf6ff" },
-    cloak: { name: "隐身", mark: "隐", good: true, dur: 3, color: "#f3eefc", ink: "#3a3348" }
+    cloak: { name: "隐身", mark: "隐", good: true, dur: 5, color: "#f3eefc", ink: "#3a3348" }
   };
   let particles = [];
   let popups = [];
@@ -1052,7 +1052,7 @@
     if (kind === "fast") effects.slow = 0;
     if (kind === "slow") effects.fast = 0;
     effects[kind] = spec.dur;
-    popup(player.x, player.y - 46, spec.name + (kind === "cloak" ? " 3秒" : ""), 0.95);
+    popup(player.x, player.y - 46, spec.name + (kind === "cloak" ? " " + spec.dur + "秒" : ""), 0.95);
     burst(player.x, player.y, spec.color, 12, 120);
     tone(spec.good ? 880 : 168, 0.1, spec.good ? "sine" : "triangle", 0.05);
   }
