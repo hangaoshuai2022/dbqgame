@@ -495,16 +495,18 @@
 
   function tone(freq, dur, type, gain) {
     if (muted || !audioCtx) return;
-    const osc = audioCtx.createOscillator();
-    const amp = audioCtx.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    amp.gain.setValueAtTime(gain, audioCtx.currentTime);
-    amp.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
-    osc.connect(amp);
-    amp.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + dur);
+    try {
+      const osc = audioCtx.createOscillator();
+      const amp = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      amp.gain.setValueAtTime(Math.max(0.0001, gain), audioCtx.currentTime);
+      amp.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      osc.connect(amp);
+      amp.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur);
+    } catch (e) { /* audio must not freeze the match */ }
   }
 
   function mulberry32(seed) {
@@ -1079,17 +1081,21 @@
     tone(784, 0.16, "sine", 0.04);
   }
 
-  function maybeLevelFlow() {
-    if (phase === "clear") return;
+  function tickLevel(dt) {
+    if (phase === "clear") {
+      clearT -= dt;
+      if (clearT <= 0) phase = "run";
+      return;
+    }
+    levelTime += dt;
+    if (levelTime >= LEVEL_SECONDS) {
+      beginClear();
+      return;
+    }
     if (phase === "run" && !finaleArmed && levelTime >= LEVEL_SECONDS - FINALE_SECONDS) startFinale();
-    if (levelTime >= LEVEL_SECONDS) beginClear();
   }
 
   function updateBalls(dt, harm) {
-    if (harm && phase === "clear") {
-      clearT -= dt;
-      if (clearT <= 0) phase = "run";
-    }
     const spawning = !harm || phase === "run" || phase === "finale";
     if (spawning) {
       spawnIn -= dt;
@@ -1149,7 +1155,6 @@
     }
     const cap = phase === "finale" ? 40 : 28;
     if (balls.length > cap) balls.splice(0, balls.length - cap);
-    if (harm) maybeLevelFlow();
   }
 
   function updateFx(dt) {
@@ -1216,12 +1221,14 @@
     }
     if (state === "play") {
       elapsed += dt;
-      if (phase !== "clear") levelTime += dt;
-      updateHazards(dt);
-      updatePlayer(dt);
-      resolvePlayerHazards();
-      updateBalls(dt, true);
-      updateFx(dt);
+      tickLevel(dt);
+      try {
+        updateHazards(dt);
+        updatePlayer(dt);
+        resolvePlayerHazards();
+        updateBalls(dt, true);
+        updateFx(dt);
+      } catch (e) { /* keep the clock and the next frame alive */ }
       updateHud();
     }
   }
@@ -1541,10 +1548,10 @@
 
   function loop(ts) {
     if (!lastTs) lastTs = ts;
-    const dt = Math.min(0.033, (ts - lastTs) / 1000);
+    const dt = Math.min(0.033, Math.max(0, (ts - lastTs) / 1000));
     lastTs = ts;
-    update(dt);
-    draw();
+    try { update(dt); } catch (e) { /* one bad frame must not stop the loop */ }
+    try { draw(); } catch (e) { /* keep painting the next frame */ }
     requestAnimationFrame(loop);
   }
 
